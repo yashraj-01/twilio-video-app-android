@@ -87,7 +87,6 @@ import com.twilio.video.app.data.api.TokenService;
 import com.twilio.video.app.participant.ParticipantViewState;
 import com.twilio.video.app.sdk.RoomManager;
 import com.twilio.video.app.sdk.VideoTrackViewState;
-import com.twilio.video.app.udf.ViewEffect;
 import com.twilio.video.app.ui.room.RoomViewEffect.Connected;
 import com.twilio.video.app.ui.room.RoomViewEffect.Disconnected;
 import com.twilio.video.app.ui.room.RoomViewEffect.ShowConnectFailureDialog;
@@ -111,6 +110,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
+import kotlin.Unit;
 import org.jetbrains.annotations.NotNull;
 import timber.log.Timber;
 
@@ -417,8 +417,8 @@ public class RoomActivity extends BaseActivity {
         deviceMenuItem = menu.findItem(R.id.device_menu_item);
 
         requestPermissions();
-        roomViewModel.getViewState().observe(this, this::bindRoomViewState);
-        roomViewModel.getViewEffects().observe(this, this::bindRoomViewEffects);
+        RoomActivityExtensionsKt.onStates(this, roomViewModel, this::bindRoomViewState);
+        RoomActivityExtensionsKt.onEvents(this, roomViewModel, this::bindRoomViewEffects);
 
         return true;
     }
@@ -1041,44 +1041,41 @@ public class RoomActivity extends BaseActivity {
         roomViewModel.processInput(viewEvent);
     }
 
-    private void bindRoomViewState(RoomViewState roomViewState) {
-        Timber.d("RoomViewState: %s", roomViewState);
+    private Unit bindRoomViewState(RoomViewState roomViewState) {
         deviceMenuItem.setVisible(!roomViewState.getAvailableAudioDevices().isEmpty());
         renderPrimaryView(roomViewState.getPrimaryParticipant());
         renderThumbnails(roomViewState);
         updateLayout(roomViewState);
+        return Unit.INSTANCE;
     }
 
-    private void bindRoomViewEffects(ViewEffect<RoomViewEffect> roomViewEffectWrapper) {
-        RoomViewEffect roomViewEffect = roomViewEffectWrapper.getContentIfNotHandled();
-        if (roomViewEffect != null) {
-            Timber.d("RoomViewEffect: %s", roomViewEffect);
-            requestPermissions();
-            if (roomViewEffect instanceof Connected) {
-                room = ((Connected) roomViewEffect).getRoom();
-                toggleAudioDevice(true);
-                initializeRoom();
-            }
-            if (roomViewEffect instanceof Disconnected) {
-                localParticipant = null;
-                room = null;
-                localParticipantSid = LOCAL_PARTICIPANT_STUB_SID;
-                updateStats();
-                toggleAudioDevice(false);
-            }
-            if (roomViewEffect instanceof ShowConnectFailureDialog) {
-                new AlertDialog.Builder(this, R.style.AppTheme_Dialog)
-                        .setTitle(getString(R.string.room_screen_connection_failure_title))
-                        .setMessage(getString(R.string.room_screen_connection_failure_message))
-                        .setNeutralButton("OK", null)
-                        .show();
-                toggleAudioDevice(false);
-            }
-            if (roomViewEffect instanceof ShowTokenErrorDialog) {
-                AuthServiceError error = ((ShowTokenErrorDialog) roomViewEffect).getServiceError();
-                handleTokenError(error);
-            }
+    private Unit bindRoomViewEffects(RoomViewEffect roomViewEffect) {
+        requestPermissions();
+        if (roomViewEffect instanceof Connected) {
+            room = ((Connected) roomViewEffect).getRoom();
+            toggleAudioDevice(true);
+            initializeRoom();
         }
+        if (roomViewEffect instanceof Disconnected) {
+            localParticipant = null;
+            room = null;
+            localParticipantSid = LOCAL_PARTICIPANT_STUB_SID;
+            updateStats();
+            toggleAudioDevice(false);
+        }
+        if (roomViewEffect instanceof ShowConnectFailureDialog) {
+            new AlertDialog.Builder(this, R.style.AppTheme_Dialog)
+                    .setTitle(getString(R.string.room_screen_connection_failure_title))
+                    .setMessage(getString(R.string.room_screen_connection_failure_message))
+                    .setNeutralButton("OK", null)
+                    .show();
+            toggleAudioDevice(false);
+        }
+        if (roomViewEffect instanceof ShowTokenErrorDialog) {
+            AuthServiceError error = ((ShowTokenErrorDialog) roomViewEffect).getServiceError();
+            handleTokenError(error);
+        }
+        return Unit.INSTANCE;
     }
 
     private void renderPrimaryView(ParticipantViewState primaryParticipant) {
@@ -1100,7 +1097,7 @@ public class RoomActivity extends BaseActivity {
     }
 
     private void displayAudioDeviceList() {
-        RoomViewState viewState = roomViewModel.getViewState().getValue();
+        RoomViewState viewState = (RoomViewState) roomViewModel.getCurrentState();
         AudioDevice selectedDevice = viewState.getSelectedDevice();
         List<AudioDevice> audioDevices = viewState.getAvailableAudioDevices();
 
